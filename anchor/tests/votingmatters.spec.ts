@@ -1,76 +1,58 @@
 import * as anchor from '@coral-xyz/anchor'
 import {Program} from '@coral-xyz/anchor'
-import {Keypair} from '@solana/web3.js'
+import {Keypair, PublicKey} from '@solana/web3.js'
 import {Votingmatters} from '../target/types/votingmatters'
+import { startAnchor, BankrunProvider } from 'anchor-bankrun'
+import { seed } from '@coral-xyz/anchor/dist/cjs/idl'
+
+const IDL = require("../target/idl/votingmatters.json")
+const votingmatters = new PublicKey("AsjZ3kWAUSQRNt2pZVeJkywhZ6gpLpHZmJjduPmKZDZZ")
 
 describe('votingmatters', () => {
   // Configure the client to use the local cluster.
-  const provider = anchor.AnchorProvider.env()
-  anchor.setProvider(provider)
-  const payer = provider.wallet as anchor.Wallet
+    let context;
+    let provider;
+    let votingMattersProgram : any;
+    beforeAll(async () => {
+      context = await startAnchor("",[{name: "votingMattersProgram", programId: votingmatters}],[])
+      provider = new BankrunProvider(context);
+      votingMattersProgram = new Program<Votingmatters>(
+        IDL,
+        provider
+      );
+    })
+  it('initialize_poll', async () => {
+      await votingMattersProgram.methods.initializePoll(
+        new anchor.BN(1),
+        new anchor.BN(1731426945),
+        new anchor.BN(1731429000),
+        "what is your favoruite type of milkshake ?"
+      ).rpc();
+      const [pollAddress] = PublicKey.findProgramAddressSync([new anchor.BN(1).toArrayLike(Buffer,'le', 8)], votingmatters);
+      console.log(pollAddress)
 
-  const program = anchor.workspace.Votingmatters as Program<Votingmatters>
+      const poll = await votingMattersProgram.account.poll.fetch(pollAddress);
 
-  const votingmattersKeypair = Keypair.generate()
+      expect(poll.pollId.toNumber()).toEqual(1);
+      expect(poll.pollStart.toNumber()).toEqual(1731426945)
+      expect(poll.pollEnd.toNumber()).toEqual(1731429000)
+      expect(poll.pollStart.toNumber()).toBeLessThan(poll.pollEnd.toNumber());
+      expect(poll.description.toString()).toEqual("what is your favoruite type of milkshake ?")
 
-  it('Initialize Votingmatters', async () => {
-    await program.methods
-      .initialize()
-      .accounts({
-        votingmatters: votingmattersKeypair.publicKey,
-        payer: payer.publicKey,
-      })
-      .signers([votingmattersKeypair])
-      .rpc()
-
-    const currentCount = await program.account.votingmatters.fetch(votingmattersKeypair.publicKey)
-
-    expect(currentCount.count).toEqual(0)
   })
 
-  it('Increment Votingmatters', async () => {
-    await program.methods.increment().accounts({ votingmatters: votingmattersKeypair.publicKey }).rpc()
+  it('Intialize Candidate', async () => {
+      await votingMattersProgram.methods.initializeCandidate(
+        "hakuna_matata",
+        new anchor.BN(1)
+      ).rpc();
 
-    const currentCount = await program.account.votingmatters.fetch(votingmattersKeypair.publicKey)
+      const [candidateAddress] = PublicKey.findProgramAddressSync([
+        // new anchor.BN("hakuna_matata")
+        // new anchor.BN(1).toArrayLike[Buffer, 'le', 8],
+      ],
+        votingmatters
+      )
 
-    expect(currentCount.count).toEqual(1)
-  })
-
-  it('Increment Votingmatters Again', async () => {
-    await program.methods.increment().accounts({ votingmatters: votingmattersKeypair.publicKey }).rpc()
-
-    const currentCount = await program.account.votingmatters.fetch(votingmattersKeypair.publicKey)
-
-    expect(currentCount.count).toEqual(2)
-  })
-
-  it('Decrement Votingmatters', async () => {
-    await program.methods.decrement().accounts({ votingmatters: votingmattersKeypair.publicKey }).rpc()
-
-    const currentCount = await program.account.votingmatters.fetch(votingmattersKeypair.publicKey)
-
-    expect(currentCount.count).toEqual(1)
-  })
-
-  it('Set votingmatters value', async () => {
-    await program.methods.set(42).accounts({ votingmatters: votingmattersKeypair.publicKey }).rpc()
-
-    const currentCount = await program.account.votingmatters.fetch(votingmattersKeypair.publicKey)
-
-    expect(currentCount.count).toEqual(42)
-  })
-
-  it('Set close the votingmatters account', async () => {
-    await program.methods
-      .close()
-      .accounts({
-        payer: payer.publicKey,
-        votingmatters: votingmattersKeypair.publicKey,
-      })
-      .rpc()
-
-    // The account should no longer exist, returning null.
-    const userAccount = await program.account.votingmatters.fetchNullable(votingmattersKeypair.publicKey)
-    expect(userAccount).toBeNull()
   })
 })
